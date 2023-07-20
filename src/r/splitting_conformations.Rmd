@@ -1,0 +1,140 @@
+---
+title: "distribution"
+output: html_document
+date: "2023-02-15"
+---
+
+
+```{r, setup, echo=FALSE}
+# Put global knitr R-chunk option "echo=TRUE" so that code will be visible in your HTML document:
+knitr::opts_chunk$set(eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE)
+knitr::opts_knit$set(root.dir = "~/Dani/Master/Internship/major_project")
+```
+
+```{r, echo=FALSE}
+library(ggridges)
+library(ggplot2)
+library(readr)
+library(broom)
+library(dplyr)
+library(tidyr)
+library(ggpubr)
+library(readxl)
+library("stringr")
+library(janitor)
+library(wesanderson)
+library(gridExtra) 
+library(ggthemes)      # clean theme for ggplot2
+library(viridis)       # color palette
+require(scales)
+library("plyr", include.only = "rbind.fill")
+
+
+
+```
+
+```{r}
+
+df = read.csv(file = "data/training_data/filter_peptide_conformations.csv" )
+
+
+df_random = read.csv(file = "data/training_data/filter_random_peptide_conformations.csv")
+
+wh_df = read.csv(file = "data/training_data/parameters/trans_cis_features.csv")
+
+#non_pro =  read.csv(file = "data/training_data/parameters/non_pro_trans_cis_wh_data.csv")
+ 
+test = read.csv(file = "data/training_data/parameters/test_features.csv")
+```
+
+```{r}
+count_conformation <- df  %>% dplyr::count(conformation_type)
+
+pep_flip <- df %>% filter(conformation_type == "pep_flip") 
+#pep_flip <- rbind.fill(pep_flip,sample_n(df_random,nrow(pep_flip)))
+
+o_flip <-  df %>% filter(conformation_type == "o_flip") 
+#o_flip <-rbind.fill(o_flip,sample_n(df_random,nrow(o_flip)))
+
+n_flip <- df %>% filter(conformation_type == "n_flip") 
+#n_flip <-rbind.fill(n_flip,sample_n(df_random,nrow(n_flip)))
+
+
+#df_random <- sample_n(df_random,nrow(df))
+#all_df <- rbind.fill(df,df_random)
+
+```
+
+
+```{r}
+training_set = rbind(df, sample_n(df_random,nrow(df)))
+
+write.csv(training_set, "data/training_data/no_feature_training_set.csv", row.names=FALSE)
+
+```
+
+
+
+```{r}
+n_flip_conformations <- df %>% filter(isomer_type == "trans_cis") %>% filter(!(compID == "PRO" | compID_p1 == "PRO")) %>%   filter(between(delta_omega, 160, 200)) %>%  filter(!between(omega_final, 20, 340)) %>% filter(conformation_type == "n_flip") %>% slice_max(delta_sum, n = 200)
+
+trans_cis<-df %>% filter(isomer_type == "trans_cis") %>% filter(!(compID == "PRO" | compID_p1 == "PRO")) %>%   filter(between(delta_omega, 160, 200)) %>%  filter(!between(omega_final, 20, 340)) %>% group_by(conformation_type) %>% slice_max(delta_sum, n = 100)
+
+all_test <- rbind(trans_cis, sample_n(pep_flip,100))
+all_test<- rbind(all_test, sample_n(df_random, 100))
+
+
+write.csv(trans_cis, "data/training_data/parameters/trans_cis_conformations.csv", row.names=FALSE)
+write.csv(all_test, "data/training_data/parameters/test_conformations.csv", row.names=FALSE)
+
+
+
+```
+
+```{r}
+
+wh_df <- test %>% mutate(pro_aa = (compID == "PRO" | compID_p1 == "PRO")) %>% mutate(
+  weight_bond = dbond * 50,
+  weight_angle = dangle * 1,
+  weight_phi = dphi * 50,
+  weight_dcaca = dcaca*60,
+)
+
+
+
+p <- ggplot(wh_df, aes(x= conformation_type, y=dtotal)) + 
+  geom_boxplot()+ 
+  theme(axis.text.x = element_text(size = 20))
+p
+
+prueba <- ggplot(wh_df, aes(x= pro_aa, y=dtotal)) + 
+  geom_boxplot()+ 
+  theme(axis.text.x = element_text(size = 13))
+prueba
+
+
+#non_p <- ggplot(non_pro, aes(x= conformation_type, y=dtotal)) + 
+  #geom_boxplot()
+#non_p
+
+
+all <- ggplot(test, aes(x= conformation_type, y=dtotal)) + 
+  geom_violin()
+print(all)
+
+fit = lm(dtotal~ conformation_type ,test)
+anova(fit)
+```
+```{r}
+wh_df_weight <- wh_df %>% select(conformation_type, weight_angle,weight_phi,weight_dcaca,weight_bond,dtotal) %>% pivot_longer(!conformation_type, names_to = "feature", values_to = "count")
+
+violin_plot <- ggplot(wh_df_weight, aes(x= conformation_type, y=count)) +
+  geom_violin() +
+  facet_wrap(~feature, scales = "free_y", nrow = 1)
+violin_plot + 
+  theme(axis.text.x = element_text(size = 13),strip.text.x = element_text(size = 15))
+  
+```
+
+
+

@@ -1,0 +1,496 @@
+---
+title: "Angles"
+output: html_document
+date: "2022-10-17"
+---
+
+
+```{r, setup, echo=FALSE}
+# Put global knitr R-chunk option "echo=TRUE" so that code will be visible in your HTML document:
+knitr::opts_chunk$set(eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE)
+knitr::opts_knit$set(root.dir = "~/Dani/Master/Internship/major_project")
+```
+
+```{r, echo=FALSE}
+library(ggplot2)
+library(readr)
+library(broom)
+library(dplyr)
+library(tidyr)
+library(ggpubr)
+library(readxl)
+library("stringr")
+library(janitor)
+library(wesanderson)
+library(gridExtra) 
+library(ggthemes)      # clean theme for ggplot2
+library(viridis)       # color palette
+require(scales)
+library(ggridges)
+library(nortest)
+library(moments)
+library(LambertW)
+```
+
+```{r}
+df = read.csv(file = "data/training_data/all_peptide_conformations_no_filter.csv" )
+#df_random = read.csv(file = "data/training_data/all_random_conformations.csv")
+df_random_no_filter = read.csv(file = "data/training_data/all_random_conformations_no_filter.csv") %>% drop_na()
+
+df_before = read.csv(file = "data/training_data/old/old_v1/all_peptide_conformations_no_filter.csv")
+df_random_no_filter_before = read.csv(file = "data/training_data/old/old_v1/all_random_conformations_no_filter.csv")
+
+
+
+```
+
+```{r}
+
+
+count_isomer_type <- df %>% count(isomer_type)
+
+df_no_filter = df %>% filter(!isomer_type == "cis_trans")
+
+
+```
+
+
+```{r}
+
+
+count_isomer_type <- df %>% count(isomer_type)
+
+df_no_filter_before = df_before %>% filter(!isomer_type == "cis_trans")
+
+
+count_conformation <- df_no_filter_before %>%  filter(RSCCS_sum_final >= RSCCS_sum_besttls) %>% filter(RSCCS_final >= 0.8 & RSCCS_p1_final >=0.8 ) %>%count(conformation_type)
+count_conformation_no_filter <- df_no_filter_before %>% count(conformation_type)
+count_conformation_filter_sum <- df_no_filter_before %>% filter(RSCCS_sum_final >= RSCCS_sum_besttls) %>% count(conformation_type)
+count_conformation_filter_rsccs <- df_no_filter_before %>% filter(RSCCS_final >= 0.8 & RSCCS_p1_final >=0.8 ) %>% count(conformation_type)
+
+
+count_total <- tibble(count_conformation[1],count_conformation[2],count_conformation_filter_sum[2],count_conformation_filter_rsccs[2],count_conformation_no_filter[2] ,  .name_repair = ~ c("conformation_type", "filter","filter_sum", "filter_rsccs", "no_filter"))%>% 
+  group_by(conformation_type) %>% 
+  mutate( perc_filter = filter /no_filter*100, perc_no_filter = no_filter/ no_filter*100, perc_filter_sum = filter_sum/ no_filter*100, perc_filter_rsccs = filter_rsccs/ no_filter*100)
+
+count_perc <- count_total %>% select(c(conformation_type,perc_filter,perc_filter_rsccs,perc_filter_sum,perc_no_filter)) %>%  pivot_longer(names_to="method", values_to="count", -conformation_type) 
+
+count_total_wide_before <- count_total %>% select(!c(conformation_type,perc_filter,perc_filter_rsccs,perc_filter_sum,perc_no_filter)) 
+
+count_total_before <- count_total %>% select(!c(conformation_type,perc_filter,perc_filter_rsccs,perc_filter_sum,perc_no_filter)) %>% pivot_longer(names_to="method", values_to="count", -conformation_type)
+
+count_total_wide_before
+
+table <- knitr::kable(count_total_wide_before)
+kableExtra::kable_classic(table, full_width=FALSE)
+table
+
+
+
+```
+
+
+```{r}
+
+
+df_random_filter_sum <- df_random_no_filter %>%  filter(RSCCS_sum_final >= RSCCS_sum_besttls)
+df_random_filter_rsccs <- df_random_no_filter %>% filter(RSCCS_final >= 0.8 & RSCCS_p1_final >=0.8 ) 
+df_random_filter <-  df_random_no_filter %>% filter(RSCCS_final >= 0.8 & RSCCS_p1_final >=0.8, RSCCS_sum_final >= RSCCS_sum_besttls) 
+
+count_random <- tibble(c("random"),nrow(df_random_filter), nrow(df_random_filter_sum), nrow(df_random_filter_rsccs), nrow(df_random_no_filter) , .name_repair = ~ c("conformation_type", "filter","filter_sum", "filter_rsccs", "no_filter")) %>% group_by(conformation_type) %>% 
+  mutate( perc_filter = filter /no_filter*100, perc_no_filter = no_filter/ no_filter*100, perc_filter_sum = filter_sum/ no_filter*100, perc_filter_rsccs = filter_rsccs/ no_filter*100)
+
+count_random_perc <- count_random %>% select(c(conformation_type,perc_filter,perc_filter_rsccs,perc_filter_sum,perc_no_filter)) %>%  pivot_longer(names_to="method", values_to="count", -conformation_type) 
+count_random_total <- count_random %>% select(!c(conformation_type,perc_filter,perc_filter_rsccs,perc_filter_sum,perc_no_filter)) %>% pivot_longer(names_to="method", values_to="count", -conformation_type) 
+
+
+all_count = full_join(count_perc, count_random_perc)
+
+```
+
+```{r}
+
+p <- ggplot(data=count_perc, aes(method, count, fill = method)) +
+    geom_col(position='dodge') +
+    labs( y = "percent")+ 
+    facet_wrap(~conformation_type,scales = "free_y")+
+    scale_fill_viridis_d(name= "", direction = -1, option = "inferno") +
+    theme(
+          axis.text.x=element_blank(),
+          axis.ticks.x=element_blank()
+          )
+
+
+all <- ggplot(data=all_count, aes(method, count, fill = method)) +
+    geom_col(position='dodge') +
+    labs( y = "percent")+ 
+    facet_wrap(~factor(conformation_type, levels = c("random","pep_flip","n_flip","o_flip")),scales = "free_y", nrow=1)+
+    scale_fill_viridis_d(name= "", direction = -1, option = "inferno", labels = c("Both filters","Res i and i+1 RSCCS >= 0.8 ", "Delta_sum_rsccs >= 0", "No_filter")) +
+    theme(
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        legend.position = "bottom",
+        legend.text = element_text(size=15)
+        )
+
+print(p)
+print(all)
+
+```
+```{r}
+dist_rsccs <- df_no_filter %>% select(c(RSCCS_final,RSCCS_p1_final,conformation_type)) %>% pivot_longer(names_to="residue", values_to="RSCCS", -conformation_type) 
+df_random_no_filter["conformation_type"] = "random"
+dist_rsccs_random <- df_random_no_filter %>% select(c(RSCCS_final,RSCCS_p1_final,conformation_type)) %>% pivot_longer(names_to="residue", values_to="RSCCS", -conformation_type)
+
+dist_rsscs_all = full_join(dist_rsccs, dist_rsccs_random)
+
+probs <- c(0.1, 0.25, 0.5, 0.75, 0.9)
+
+dist_rsscs_all <- dist_rsscs_all %>% group_by(conformation_type) %>%  mutate(quant = factor(findInterval(RSCCS,quantile(RSCCS, prob=probs)))) %>% ungroup()
+
+
+
+
+d1 <- ggplot(data = dist_rsscs_all, mapping = aes(x = RSCCS, fill = quant, colour = quant)) +
+geom_histogram(binwidth = 0.015) +
+facet_wrap(~conformation_type, scales = "free_y")+
+scale_x_continuous(limits = c(0,1) ,breaks = seq(0, 1, by = 0.2))+
+scale_color_viridis_d(name= "", direction = -1, option = "c")+
+scale_fill_viridis_d(name= "", direction = -1, option = "c")
+
+density_plot <-ggplot(dist_rsscs_all, aes(x = RSCCS, y = conformation_type, fill = factor(stat(quantile)))) +
+  stat_density_ridges(
+    geom = "density_ridges_gradient", calc_ecdf = TRUE,
+    quantiles = 5, quantile_lines = TRUE
+  ) +
+  theme(
+        legend.text = element_text(size=15)
+        )+
+
+  scale_fill_viridis_d(name = "Percentiles", labels = c(0,20,40,60,80))
+
+dist_sum <- df_no_filter %>% select(c(RSCCS_sum_besttls,RSCCS_sum_final,conformation_type)) %>% 
+mutate(delta_sum = RSCCS_sum_final - RSCCS_sum_besttls)
+dist_sum_random <-df_random_no_filter %>% select(c(RSCCS_sum_besttls,RSCCS_sum_final,conformation_type)) %>% 
+mutate(delta_sum = RSCCS_sum_final - RSCCS_sum_besttls)
+dist_sum_all = full_join(dist_sum, dist_sum_random) %>% mutate(area = delta_sum > median(dist_sum_random$delta_sum))
+
+
+summary_stat <- dist_sum_all %>%                               # Summary by group using dplyr
+  group_by(conformation_type) %>% 
+  summarize(min = min(delta_sum),
+            q1 = quantile(delta_sum, 0.25),
+            median = median(delta_sum),
+            mean = mean(delta_sum),
+            q3 = quantile(delta_sum, 0.75),
+            max = max(delta_sum))
+
+
+d2 <- ggplot(data = dist_sum_all, mapping = aes(x = delta_sum)) +
+geom_histogram(binwidth = 0.04, alpha=0.5, colour ="white", fill = "black")+
+facet_wrap(~factor(conformation_type, levels = c("random","pep_flip","n_flip","o_flip")),scales = "free_y", nrow=1)+
+scale_x_continuous(limits = c(-1.2,1.2))
+
+d3 <- ggplot(data = dist_sum_all, mapping = aes(x = delta_sum)) +
+geom_vline(xintercept=median(dist_sum_random$delta_sum), size=0.5, color="red") +
+geom_histogram(binwidth = 0.01, alpha=0.5, colour ="white", fill = "black")+
+facet_wrap(~factor(conformation_type, levels = c("random","pep_flip","n_flip","o_flip")),scales = "free_y", nrow=4)+
+scale_x_continuous(limits = c(-1.2,1.2))
+
+d4 <- ggplot(data = dist_sum_all, mapping = aes(x = delta_sum)) +
+geom_density(alpha=0.5,color = 4, fill = 4)+
+geom_vline(xintercept=median(dist_sum_random$delta_sum), size=0.5, color="red") +
+facet_wrap(~factor(conformation_type, levels = c("random","pep_flip","n_flip","o_flip")),scales = "free_y", nrow=4)+
+scale_x_continuous(limits = c(-1.2,1.2))+
+theme(strip.text.x = element_text(size = 10))
+
+d5 <- ggplot(data = dist_sum_all, mapping = aes(x = delta_sum)) +
+geom_density(alpha=0.5, color = 4, fill = 4)+
+geom_vline(xintercept=median(dist_sum_random$delta_sum), size=0.5, color="red") +
+facet_wrap(~factor(conformation_type, levels = c("random","pep_flip","n_flip","o_flip")),scales = "free_y", nrow=1)+
+scale_x_continuous(limits = c(-1.2,1.2))+
+theme(strip.text.x = element_text(size = 10))
+
+
+print(d1)
+print(density_plot)
+print(d2)
+print(d3)
+print(d4)
+print(d5)
+
+table <- knitr::kable(summary_stat)
+kableExtra::kable_classic(table, full_width=FALSE)
+table
+
+```
+
+
+
+
+```{r}
+
+residue_ocurrance<- df %>% select(c(compID,compID_p1,conformation_type)) %>% group_by(compID,compID_p1,conformation_type) 
+
+res_list <- unique(residue_ocurrance$compID)
+
+residue_ocurrance <- residue_ocurrance %>% filter(!compID %in% c("UNK","TPO"), !compID_p1 %in% c("UNK","TPO"))
+
+residue_ocurrance$compID[residue_ocurrance$compID == "MSE"] <- "MET"
+residue_ocurrance$compID[residue_ocurrance$compID == "HYP"] <- "PRO"
+residue_ocurrance$compID_p1[residue_ocurrance$compID_p1 == "MSE"] <- "MET"
+residue_ocurrance$compID_p1[residue_ocurrance$compID_p1 == "HYP"] <- "PRO"
+
+residue_ocurrance <- residue_ocurrance %>% summarise(count = n()) %>% ungroup()
+
+residue_random_ocurrance <- df_random_no_filter %>% select(c(compID,compID_p1)) %>% filter(compID %in% res_list, compID_p1 %in% res_list, !compID %in% c("UNK","TPO"), !compID_p1 %in% c("UNK","TPO")) %>% group_by(compID,compID_p1) 
+
+residue_random_ocurrance$compID[residue_random_ocurrance$compID == "MSE"] <- "MET"
+residue_random_ocurrance$compID[residue_random_ocurrance$compID == "HYP"] <- "PRO"
+residue_random_ocurrance$compID_p1[residue_random_ocurrance$compID_p1 == "MSE"] <- "MET"
+residue_random_ocurrance$compID_p1[residue_random_ocurrance$compID_p1 == "HYP"] <- "PRO"
+
+residue_random_ocurrance <- residue_random_ocurrance %>% summarise(count_random = n()) %>% ungroup() %>% mutate(freq_random = count_random/sum(count_random)*100)
+
+matrix_random <-residue_random_ocurrance %>% select(!freq_random) %>%  pivot_wider(names_from = compID, values_from = count_random)
+
+all_ocurrance <- full_join(residue_ocurrance,residue_random_ocurrance, by = c("compID","compID_p1")) %>% mutate(freq = count / freq_random)
+
+conformations <- unique(residue_ocurrance$conformation_type)
+
+
+
+heatmap_list = lapply(conformations, function(cc) {
+gg <- ggplot(filter(residue_ocurrance, conformation_type==cc), 
+             aes(x=compID, y=compID_p1, fill=count, frame=conformation_type))+
+geom_tile(color="white", size=0.1)+
+coord_equal()+ labs(x=NULL, y=NULL, 
+                  title=sprintf("%s", cc))+ 
+scale_x_discrete("Residue i")+ 
+scale_y_discrete("Residue i+1")+ 
+scale_fill_viridis(name= "", direction = -1, option = "E")+
+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+         #axis.title.x = "Residue i",
+         strip.text.y = element_blank(),
+         panel.background = element_rect(fill='transparent'),plot.title=element_text(hjust=0, size=10),
+         plot.background = element_rect(fill='transparent', color=NA),
+         panel.grid.major = element_blank(),
+         panel.grid.minor = element_blank())
+gg
+
+})
+heatmap_list[["ncol"]] <- 3
+
+heatmap_norm_list = lapply(conformations, function(cc) {
+gg <- ggplot(filter(all_ocurrance, conformation_type==cc), 
+             aes(x=compID, y=compID_p1, fill=freq, frame=conformation_type))
+gg <- gg + geom_tile(color="white", size=0.1)
+gg <- gg + coord_equal()
+gg <- gg + labs(x=NULL, y=NULL, 
+                  title=sprintf("%s", cc))
+gg <- gg + scale_x_discrete("Residue i")
+gg <- gg + scale_y_discrete("Residue i+1")
+gg <- gg + scale_fill_viridis(name= "", direction = -1, option = "E")
+gg <- gg + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+         #axis.title.x = "Residue i",
+         strip.text.y = element_blank(),
+         panel.background = element_rect(fill='transparent'),plot.title=element_text(hjust=0, size=10),
+         plot.background = element_rect(fill='transparent', color=NA),
+         panel.grid.major = element_blank(),
+         panel.grid.minor = element_blank())
+gg
+
+})
+heatmap_norm_list[["ncol"]] <- 3
+
+
+
+
+heatmap_1 <-do.call(grid.arrange, heatmap_list)
+heat_map_2 <-do.call(grid.arrange, heatmap_norm_list)
+
+
+print(heatmap_1)
+print(heat_map_2)
+
+
+
+```
+```{r}
+res_rsccs_random <- df_random_no_filter %>% select(c(RSCCS_final,RSCCS_p1_final,compID,compID_p1,conformation_type))
+
+```
+
+
+```{r}
+p1 = ggplot(data = df, mapping = aes(x = delta_omega)) +
+  geom_histogram(binwidth = 5, color = 'black', alpha=0.7) +
+  facet_wrap(~conformation_type,scales = "free_y")+
+  labs(x= expression(paste(Delta,omega, " torsion angle distribution")) , y = "counts")+
+  scale_x_continuous(breaks = seq(0, 360, by = 60))
+
+p2 = ggplot(data = df, mapping = aes(x = delta_omega)) +
+  geom_histogram(binwidth = 5, color = 'black', alpha=0.7) +
+  labs(x= expression(paste(Delta,omega, " torsion angle distribution")) , y = "log_counts")+
+  facet_wrap(~conformation_type,scales = "free_y")+
+  scale_x_continuous(breaks = seq(0, 360, by = 30))+
+  scale_y_log10(labels = comma)
+
+  
+p3 = ggplot(data = df, mapping = aes(x = delta_occac)) +
+  geom_histogram(binwidth = 5, color = 'black', alpha=0.7) +
+  facet_wrap(~conformation_type,scales = "free_y")+
+  labs(x= expression(paste(Delta, "ocac torsion angle distribution")) , y = "counts")+
+  scale_x_continuous(breaks = seq(0, 360, by = 60))
+
+p4 = ggplot(data = df, mapping = aes(x = delta_occac)) +
+  geom_histogram(binwidth = 5, color = 'black', alpha=0.7) +
+  facet_wrap(~conformation_type,scales = "free_y")+
+  labs(x= expression(paste(Delta, "ocac torsion angle distribution")) , y = "log_counts")+
+  scale_x_continuous(breaks = seq(0, 360, by = 30))+
+  scale_y_log10(labels = comma)
+
+
+
+print(p1)
+print(p2)
+print(p3)
+print(p4)
+
+```
+
+
+```{r}
+
+df_no_filter <- df_no_filter %>% mutate(delta_sum = RSCCS_sum_final - RSCCS_sum_besttls)
+
+dist_rsccs <- df_no_filter %>% select(c(RSCCS_final,RSCCS_p1_final,conformation_type)) %>% pivot_longer(names_to="residue", values_to="RSCCS", -conformation_type) 
+
+summary_quantile <- dist_rsccs %>%                               # Summary by group using dplyr
+  group_by(conformation_type) %>% 
+  summarize(q1 = quantile(RSCCS, 0.35))
+
+dist_sum_random <-df_random_no_filter %>% select(c(RSCCS_sum_besttls,RSCCS_sum_final,conformation_type)) %>% 
+mutate(delta_sum = RSCCS_sum_final - RSCCS_sum_besttls)
+
+
+df_filter <- df_no_filter %>% filter(delta_sum >= median(dist_sum_random$delta_sum)) %>% left_join(summary_quantile, by = "conformation_type") %>% group_by(conformation_type) %>% filter(RSCCS_final >= q1) %>% filter(RSCCS_p1_final >= q1)
+
+df_filter_sum <- df_no_filter %>% filter(delta_sum >= median(dist_sum_random$delta_sum))
+df_filter_rsccs <- df_no_filter %>% left_join(summary_quantile, by = "conformation_type") %>% group_by(conformation_type) %>% filter(RSCCS_final >= q1) %>% filter(RSCCS_p1_final >= q1)
+
+
+
+count_conformation <- df_filter  %>% count(conformation_type)
+count_conformation_no_filter <- df_no_filter %>% count(conformation_type)
+count_conformation_filter_sum <- df_filter_sum %>% count(conformation_type)
+count_conformation_filter_rsccs <- df_filter_rsccs  %>% count(conformation_type)
+
+
+count_total <- tibble(count_conformation[1],count_conformation[2],count_conformation_filter_sum[2],count_conformation_filter_rsccs[2],count_conformation_no_filter[2] ,  .name_repair = ~ c("conformation_type", "filter","filter_sum", "filter_rsccs", "no_filter"))%>% 
+  group_by(conformation_type) %>% 
+  mutate( perc_filter = filter /no_filter*100, perc_no_filter = no_filter/ no_filter*100, perc_filter_sum = filter_sum/ no_filter*100, perc_filter_rsccs = filter_rsccs/ no_filter*100)
+
+count_perc <- count_total %>% select(c(conformation_type,perc_filter,perc_filter_rsccs,perc_filter_sum,perc_no_filter)) %>%  pivot_longer(names_to="method", values_to="count", -conformation_type) 
+
+count_total_wide <- count_total %>% select(!c(conformation_type,perc_filter,perc_filter_rsccs,perc_filter_sum,perc_no_filter)) 
+
+count_total <- count_total %>% select(!c(conformation_type,perc_filter,perc_filter_rsccs,perc_filter_sum,perc_no_filter)) %>% pivot_longer(names_to="method", values_to="count", -conformation_type)
+
+count_total_wide
+
+table <- knitr::kable(count_total_wide)
+kableExtra::kable_classic(table, full_width=FALSE)
+table
+```
+
+```{r}
+
+df_random_no_filter <- df_random_no_filter %>% mutate(delta_sum = RSCCS_sum_final - RSCCS_sum_besttls)
+
+dist_rsccs_random <- df_random_no_filter %>% select(c(RSCCS_final,RSCCS_p1_final,conformation_type)) %>% pivot_longer(names_to="residue", values_to="RSCCS", -conformation_type) 
+
+summary_quantile_random <- dist_rsccs_random %>%                               # Summary by group using dplyr
+  group_by(conformation_type) %>% 
+  summarize(q1 = quantile(RSCCS, 0.35))
+
+df_random_filter <- df_random_no_filter %>% filter(delta_sum >= median(dist_sum_random$delta_sum)) %>% mutate(q1 = quantile(dist_rsccs_random$RSCCS, 0.35)) %>% filter(RSCCS_final >= q1) %>% filter(RSCCS_p1_final >= q1)
+
+df_random_filter_sum <- df_random_no_filter %>% filter(delta_sum >= median(dist_sum_random$delta_sum))
+
+df_random_filter_rsccs <- df_random_no_filter %>% mutate(q1 = quantile(dist_rsccs_random$RSCCS, 0.35)) %>% filter(RSCCS_final >= q1) %>% filter(RSCCS_p1_final >= q1)
+
+
+count_random <- tibble(c("random"),nrow(df_random_filter), nrow(df_random_filter_sum), nrow(df_random_filter_rsccs), nrow(df_random_no_filter) , .name_repair = ~ c("conformation_type", "filter","filter_sum", "filter_rsccs", "no_filter")) %>% group_by(conformation_type) %>% 
+  mutate( perc_filter = filter /no_filter*100, perc_no_filter = no_filter/ no_filter*100, perc_filter_sum = filter_sum/ no_filter*100, perc_filter_rsccs = filter_rsccs/ no_filter*100)
+
+count_random_perc <- count_random %>% select(c(conformation_type,perc_filter,perc_filter_rsccs,perc_filter_sum,perc_no_filter)) %>%  pivot_longer(names_to="method", values_to="count", -conformation_type) 
+count_random_total <- count_random %>% select(!c(conformation_type,perc_filter,perc_filter_rsccs,perc_filter_sum,perc_no_filter)) %>% pivot_longer(names_to="method", values_to="count", -conformation_type) 
+
+
+all_count = full_join(count_perc, count_random_perc)
+
+
+summary_quantile_all = full_join(summary_quantile, summary_quantile_random)
+
+typeof(summary_quantile_all)
+
+table <- knitr::kable(summary_quantile_all)
+kableExtra::kable_classic(table, full_width=FALSE)
+table
+
+
+```
+
+```{r}
+
+p <- ggplot(data=count_perc, aes(method, count, fill = method)) +
+    geom_col(position='dodge') +
+    labs( y = "percent")+ 
+    facet_wrap(~conformation_type,scales = "free_y")+
+    scale_fill_viridis_d(name= "", direction = -1, option = "inferno") +
+    theme(
+          axis.text.x=element_blank(),
+          axis.ticks.x=element_blank()
+          )
+
+
+all <- ggplot(data=all_count, aes(method, count, fill = method)) +
+    geom_col(position='dodge') +
+    labs( y = "percent")+ 
+    facet_wrap(~factor(conformation_type, levels = c("random","pep_flip","n_flip","o_flip")),scales = "free_y", nrow=1)+
+    scale_fill_viridis_d(name= "", direction = -1, option = "inferno", labels = c("Both filters","Res i and i+1 RSCCS >= 35 percentile", "Delta_sum_rsccs >= median random delta_sum rsccs", "No_filter")) +
+    theme(
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        legend.position = "bottom",
+        legend.text = element_text(size=15)
+        )
+
+print(p)
+print(all)
+
+```
+
+```{r}
+d4 <- ggplot(data = dist_sum_random, mapping = aes(x = delta_sum)) +
+geom_density(alpha=0.5,color = 4, fill = 4)
+
+skewness(dist_sum_random$delta_sum)
+kurtosis(dist_sum_random$delta_sum)
+
+print(d4)
+
+#qqnorm(dist_sum_random$delta_sum); qqline(dist_sum_random$delta_sum)
+
+
+#XX <- Gaussianize(YY, type = "hh")
+
+```
+```{r}
+#XX <- Gaussianize(dist_sum_random$delta_sum, type = "hh")
+
+#test_norm(XX)
+```
+
+

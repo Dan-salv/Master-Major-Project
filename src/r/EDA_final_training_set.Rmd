@@ -1,0 +1,76 @@
+---
+title: "distribution"
+output: html_document
+date: "2023-02-15"
+---
+
+
+```{r, setup, echo=FALSE}
+# Put global knitr R-chunk option "echo=TRUE" so that code will be visible in your HTML document:
+knitr::opts_chunk$set(eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE)
+knitr::opts_knit$set(root.dir = "~/Dani/Master/Internship/major_project")
+```
+
+```{r, echo=FALSE}
+library(ggridges)
+library(ggplot2)
+library(readr)
+library(broom)
+library(dplyr)
+library(tidyr)
+library(ggpubr)
+library(readxl)
+library("stringr")
+library(janitor)
+library(wesanderson)
+library(gridExtra) 
+library(ggthemes)      # clean theme for ggplot2
+library(viridis)       # color palette
+require(scales)
+library("plyr", include.only = "rbind.fill")
+library(purrr)
+library(ggcorrplot)
+library(factoextra)
+library(devtools)
+library(ggbiplot)
+library(plyr)
+library(reshape2)
+library(ggfortify)
+library(caret)
+library(Rtsne)
+
+
+
+```
+
+```{r}
+
+df = read.csv(file = "data/training_data/final_training_set.csv" )
+df <- tbl_df(df)
+
+```
+
+
+```{r}
+data = df %>% select(c(cn_m1:bo_p2))
+
+```
+
+```{r}
+plot_distributions <- function(data, x){
+plot <- ggplot(data = data, mapping = aes_string(x = x, colour = "df$conformation_type")) +
+geom_histogram(alpha=0.5, fill = "white") +
+facet_wrap(~df$conformation_type, scales = "free_y", nrow = 1)+
+theme(axis.text=element_text(size=12), axis.title = element_text(size = 15)) 
+print(plot)
+}
+
+plots <- lapply(colnames(data), plot_distributions, data = data )
+
+```
+```{r}
+
+```
+
+
+

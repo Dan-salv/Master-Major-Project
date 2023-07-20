@@ -1,0 +1,312 @@
+---
+title: "distribution"
+output: html_document
+date: "2023-02-15"
+---
+
+
+```{r, setup, echo=FALSE}
+# Put global knitr R-chunk option "echo=TRUE" so that code will be visible in your HTML document:
+knitr::opts_chunk$set(eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE)
+knitr::opts_knit$set(root.dir = "~/Dani/Master/Internship/major_project")
+```
+
+```{r, echo=FALSE}
+library(ggplot2)
+library(readr)
+library(broom)
+library(dplyr)
+library(tidyr)
+library(ggpubr)
+library(readxl)
+library("stringr")
+library(janitor)
+library(wesanderson)
+library(gridExtra) 
+library(ggthemes)      # clean theme for ggplot2
+library(viridis)       # color palette
+require(scales)
+library(ggridges)
+library(nortest)
+library(moments)
+library(LambertW)
+library(fitdistrplus)
+library(gamlss)
+library(gamlss.dist)
+library(gamlss.add)
+library(VGAM)
+library(MASS)
+library(qqplotr)
+library(goftest)
+
+```
+
+```{r}
+df = read.csv(file = "data/training_data/all_peptide_conformations_no_filter.csv" )
+#df_random = read.csv(file = "data/training_data/all_random_conformations.csv")
+df_random_no_filter = read.csv(file = "data/training_data/all_random_conformations_no_filter.csv") %>% drop_na()
+
+```
+
+```{r}
+
+
+count_isomer_type <- df %>% count(isomer_type)
+
+df_no_filter = df %>% filter(!isomer_type == "cis_trans")
+
+
+```
+
+```{r}
+
+dist_rsccs <- df_no_filter %>% dplyr::select(c(RSCCS_final,RSCCS_p1_final,conformation_type)) %>% pivot_longer(names_to="residue", values_to="RSCCS", -conformation_type) 
+
+
+df_random_no_filter["conformation_type"] = "random"
+
+dist_rsccs_random <- df_random_no_filter %>% dplyr::select(c(RSCCS_final,RSCCS_p1_final,conformation_type)) %>% pivot_longer(names_to="residue", values_to="RSCCS", -conformation_type)
+
+dist_rsscs_all = full_join(dist_rsccs, dist_rsccs_random)
+
+probs <- c(0.1, 0.25, 0.5, 0.75, 0.9)
+
+dist_rsscs_all <- dist_rsscs_all %>% group_by(conformation_type) %>%  mutate(quant = factor(findInterval(RSCCS,quantile(RSCCS, prob=probs)))) %>% ungroup()
+
+
+dist_sum <- df_no_filter %>% dplyr::select(c(RSCCS_sum_besttls,RSCCS_sum_final,conformation_type)) %>% filter(RSCCS_sum_besttls > 0 & RSCCS_sum_final > 0) %>% mutate(delta_sum = RSCCS_sum_final / RSCCS_sum_besttls)
+
+dist_sum_random <-df_random_no_filter %>% dplyr::select(c(RSCCS_sum_besttls,RSCCS_sum_final,conformation_type)) %>% filter(RSCCS_sum_besttls > 0 & RSCCS_sum_final > 0) %>% mutate(delta_sum = RSCCS_sum_final / RSCCS_sum_besttls)
+
+dist_sum_all = full_join(dist_sum, dist_sum_random) %>% mutate(area = delta_sum > median(dist_sum_random$delta_sum))
+
+density_plot <-ggplot(dist_rsscs_all, aes(x = RSCCS, y = conformation_type, fill = factor(stat(quantile)))) +
+  stat_density_ridges(
+    geom = "density_ridges_gradient", calc_ecdf = TRUE,
+    quantiles = 5, quantile_lines = TRUE
+  ) +
+  theme(
+        legend.text = element_text(size=15)
+        )+
+
+  scale_fill_viridis_d(name = "Percentiles", labels = c(0,20,40,60,80))
+
+d2 <- ggplot(data = dist_sum_all, mapping = aes(x = delta_sum)) +
+geom_histogram(binwidth = 0.04, alpha=0.5, colour ="white", fill = "black")+
+facet_wrap(~factor(conformation_type, levels = c("random","pep_flip","n_flip","o_flip")),scales = "free_y", nrow=1)+
+scale_x_continuous(limits = c(0,3))
+
+d3 <- ggplot(data = dist_sum_all, mapping = aes(x = delta_sum)) +
+geom_vline(xintercept=median(dist_sum_random$delta_sum), size=0.5, color="red") +
+geom_histogram(binwidth = 0.01, alpha=0.5, colour ="white", fill = "black")+
+facet_wrap(~factor(conformation_type, levels = c("random","pep_flip","n_flip","o_flip")),scales = "free_y", nrow=4)+
+scale_x_continuous(limits = c(0,3))
+
+d4 <- ggplot(data = dist_sum_all, mapping = aes(x = delta_sum)) +
+geom_density(alpha=0.5,color = 4, fill = 4)+
+geom_vline(xintercept=median(dist_sum_random$delta_sum), size=0.5, color="red") +
+facet_wrap(~factor(conformation_type, levels = c("random","pep_flip","n_flip","o_flip")),scales = "free_y", nrow=4)+
+scale_x_continuous(limits = c(0,3))+
+theme(strip.text.x = element_text(size = 10))
+
+d5 <- ggplot(data = dist_sum_all, mapping = aes(x = delta_sum)) +
+geom_density(alpha=0.5, color = 4, fill = 4)+
+geom_vline(xintercept=median(dist_sum_random$delta_sum), size=0.5, color="red") +
+facet_wrap(~factor(conformation_type, levels = c("random","pep_flip","n_flip","o_flip")),scales = "free_y", nrow=1)+
+scale_x_continuous(limits = c(0,3))+
+theme(strip.text.x = element_text(size = 10))
+
+
+
+print(density_plot)
+print(d2)
+print(d3)
+print(d4)
+print(d5)
+
+```
+```{r}
+
+sample_dist_sum_random <-sample_n(dist_sum_random, 5000)
+
+descdist(sample_dist_sum_random$delta_sum, boot=100) 
+
+ks.test(dist_sum_random$delta_sum, sample_dist_sum_random$delta_sum)
+
+shapiro.test(sample_dist_sum_random$delta_sum)
+
+fit_beta <- fitdist(sample_dist_sum_random$delta_sum, "nbinom")
+
+d_sample <- ggplot(data = sample_dist_sum_random, mapping = aes(x = log(delta_sum))) +
+geom_density(alpha=0.5,color = 4, fill = 4)
+
+print(d_sample)
+
+plot(fit_beta)
+
+```
+```{r}
+
+pep_flip <- dist_rsccs %>% filter(conformation_type == "pep_flip") %>% filter(RSCCS > 0) 
+descdist(pep_flip$RSCCS, boot=100) 
+
+fit_beta <- fitdist(pep_flip$RSCCS, "beta")
+
+plot(fit_beta)
+
+summary_beta <- summary(fit_beta)
+
+di <- "beta" # exponential distribution
+dp <- list(shape1 =summary_beta$cor[1,1], shape2 = summary_beta$cor[1,2]) # exponential rate parameter
+
+ks.test(pep_flip$RSCCS, "pbeta", summary_beta$cor[1,1], summary_beta$cor[1,2] )
+
+#x_pbeta <- seq(0, 1, by = 0.0005)  
+#beta_c_dist = pbeta(x_pbeta, shape1 = summary_beta$cor[1,1], shape2 = summary_beta$cor[1,2])
+
+goftest::ad.test(pep_flip$RSCCS, null = "beta", shape1 =summary_beta$cor[1,1] , shape2 = summary_beta$cor[1,2], estimated = TRUE )
+
+```
+
+```{r}
+fit <- fitDist(pep_flip$RSCCS, k = 2, type = "realplus", trace = FALSE, try.gamlss = TRUE)
+
+summary(fit)
+```
+```{r}
+b <- MASS::boxcox(lm(pep_flip$RSCCS ~ 1))
+lambda <- b$x[which.max(b$y)]
+
+new_x_exact <- (pep_flip$RSCCS ^ lambda - 1) / lambda
+
+#fit_beta <- fitdist(new_x_exact, "beta")
+descdist(new_x_exact, boot=100) 
+plot(fit_beta)
+```
+
+
+
+```{r}
+gg <- ggplot(data = pep_flip, mapping = aes(sample = RSCCS)) +
+    qqplotr::stat_qq_band(distribution = di, dparams = dp, bandType = "ts") +
+    qqplotr::stat_qq_line(distribution = di, dparams = dp) +
+    qqplotr::stat_qq_point(distribution = di, dparams = dp) +
+    labs(x = "Theoretical Quantiles", y = "Sample Quantiles")
+gg
+
+```
+
+```{r}
+
+n_flip <- dist_rsccs %>% filter(conformation_type == "n_flip") %>% filter(RSCCS > 0) 
+descdist(n_flip$RSCCS, boot=100) 
+
+fit_beta <- fitdist(n_flip$RSCCS, "beta")
+
+plot(fit_beta)
+
+summary_beta <- summary(fit_beta)
+
+
+
+di <- "beta" # exponential distribution
+dp <- list(shape1 =summary_beta$cor[1,1], shape2 = summary_beta$cor[1,2]) # exponential rate parameter
+
+
+goftest::ad.test(n_flip$RSCCS, null = "beta", shape1 =summary_beta$cor[1,1] , shape2 = summary_beta$cor[1,2], estimated = TRUE )
+
+```
+```{r}
+gg <- ggplot(data = n_flip, mapping = aes(sample = RSCCS)) +
+    qqplotr::stat_qq_band(distribution = di, dparams = dp, bandType = "ts") +
+    qqplotr::stat_qq_line(distribution = di, dparams = dp) +
+    qqplotr::stat_qq_point(distribution = di, dparams = dp) +
+    labs(x = "Theoretical Quantiles", y = "Sample Quantiles")
+gg
+
+```
+
+```{r}
+
+o_flip <- dist_rsccs %>% filter(conformation_type == "o_flip") %>% filter(RSCCS > 0) 
+descdist(o_flip$RSCCS, boot=100) 
+
+fit_beta <- fitdist(o_flip$RSCCS, "beta")
+
+plot(fit_beta)
+
+summary_beta <- summary(fit_beta)
+
+
+
+di <- "beta" # exponential distribution
+dp <- list(shape1 =summary_beta$cor[1,1], shape2 = summary_beta$cor[1,2]) # exponential rate parameter
+
+x_pbeta <- seq(0, 1, by = 0.0005)  
+beta_c_dist = pbeta(x_pbeta, shape1 = summary_beta$cor[1,1], shape2 = summary_beta$cor[1,2])
+
+goftest::ad.test(o_flip$RSCCS, null = "beta", shape1 =summary_beta$cor[1,1] , shape2 = summary_beta$cor[1,2], estimated = TRUE )
+
+```
+
+```{r}
+gg <- ggplot(data = o_flip, mapping = aes(sample = RSCCS)) +
+    qqplotr::stat_qq_band(distribution = di, dparams = dp, bandType = "ts") +
+    qqplotr::stat_qq_line(distribution = di, dparams = dp) +
+    qqplotr::stat_qq_point(distribution = di, dparams = dp) +
+    labs(x = "Theoretical Quantiles", y = "Sample Quantiles")
+gg
+
+```
+
+
+```{r}
+fit <- fitDist(sample_dist_sum_random$delta_sum, k = 2, type = "realplus", trace = FALSE, try.gamlss = TRUE)
+
+summary(fit)
+```
+
+```{r}
+b <- boxcox(lm(sample_dist_sum_random$delta_sum ~ 1))
+lambda <- b$x[which.max(b$y)]
+
+new_x_exact <- (sample_dist_sum_random$delta_sum ^ lambda - 1) / lambda
+
+shapiro.test(new_x_exact)
+
+```
+```{r}
+mod.Lhh <- MLE_LambertW(sample_dist_sum_random$delta_sum, distname="normal", type="hh")
+plot(mod.Lhh)
+xx <- get_input(mod.Lhh)
+normfit(xx)
+
+
+```
+
+```{r}
+pep_flip <- dist_rsccs %>% filter(conformation_type == "pep_flip") %>% filter(RSCCS > 0)
+
+fit = vglm(pep_flip$RSCCS ~ 1, riceff, trace=TRUE, crit="c")
+```
+```{r}
+sigma = Coef(fit)[1]
+vee = Coef(fit)[2]
+
+y = rrice(n <- 5000, vee, sigma)
+
+ks.test(pep_flip$RSCCS, y)
+
+
+```
+```{r}
+y = rrice(n <- 5000, vee, sigma)
+hist(y)
+```
+
+
+
+
+
+
+

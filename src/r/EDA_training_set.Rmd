@@ -1,0 +1,354 @@
+---
+title: "distribution"
+output: html_document
+date: "2023-02-15"
+---
+
+
+```{r, setup, echo=FALSE}
+# Put global knitr R-chunk option "echo=TRUE" so that code will be visible in your HTML document:
+knitr::opts_chunk$set(eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE)
+knitr::opts_knit$set(root.dir = "~/Dani/Master/Internship/major_project")
+```
+
+```{r, echo=FALSE}
+library(ggridges)
+library(ggplot2)
+library(readr)
+library(broom)
+library(dplyr)
+library(tidyr)
+library(ggpubr)
+library(readxl)
+library("stringr")
+library(janitor)
+library(wesanderson)
+library(gridExtra) 
+library(ggthemes)      # clean theme for ggplot2
+library(viridis)       # color palette
+require(scales)
+library("plyr", include.only = "rbind.fill")
+library(purrr)
+library(ggcorrplot)
+library(factoextra)
+library(devtools)
+library(ggbiplot)
+library(plyr)
+library(reshape2)
+library(ggfortify)
+library(caret)
+library(Rtsne)
+
+
+
+```
+
+```{r}
+df = read.csv(file = "data/training_data/training_set.csv" )
+df <- tbl_df(df)
+```
+
+
+```{r}
+na_values <- df %>% group_by(conformation_type) %>% summarise(across(cn_m1:dcaca ,~sum(is.na(.x)/n()*100)))
+
+df %>% group_by(conformation_type) %>% summarise(across(donor_1:acceptor_2 ,~sum(is.na(.x)/n()*100)))
+```
+
+```{r}
+ramachandran <- df %>% select(conformation_type,zram_m1:zram_p2)
+hydrogen <- df %>% select(conformation_type,donor_1:acceptor_2)
+
+hydrogen_longer <-hydrogen %>%  pivot_longer(names_to="hbond", values_to="value", cols=-conformation_type)
+
+ramachandran_longer <- ramachandran %>%  pivot_longer(names_to="ramachandran", values_to="value", cols=-conformation_type)
+
+distribution_hydrogen <- ggplot(data = hydrogen_longer, mapping = aes(x = value))+
+  geom_histogram(binwidth = 0.25, alpha=0.5, colour ="white", fill = "black") +
+  facet_wrap(~ conformation_type + hbond, scales = "free_y")
+
+distribution_hydrogen
+
+boxplot_hydrogen <- ggplot(data = hydrogen_longer, mapping = aes(x = value))+
+  geom_boxplot() +
+  facet_wrap(~ conformation_type + hbond)
+
+boxplot_hydrogen
+
+distribution_ramachandran <- ggplot(data = ramachandran_longer, mapping = aes(x = value))+
+  geom_histogram(binwidth = 0.125, alpha=0.5, colour ="white", fill = "black") +
+  facet_wrap(~ conformation_type + ramachandran, scales = "free_y")
+
+distribution_ramachandran
+
+boxplot_ramachandran <- ggplot(data = ramachandran_longer, mapping = aes(x = value))+
+  geom_boxplot() +
+  facet_wrap(~ conformation_type + ramachandran)
+
+boxplot_ramachandran
+
+
+```
+
+```{r}
+na_terminal  <- df %>% filter(dssp_m1 == "" | dssp_r0 == "" | dssp_p1 == "" | dssp_p2 == "")
+na_middle  <- df %>% filter( dssp_r0 == "" | dssp_p1 == "" )
+
+df %>% group_by(conformation_type) %>% summarise(n())
+```
+
+
+```{r}
+dssp <- df %>%  select(conformation_type, dssp_m1,dssp_r0,dssp_p1,dssp_p2) %>% pivot_longer(!conformation_type, names_to="residue", values_to="secondary_structure")
+
+dssp_boxplot <- ggplot(data = dssp, aes(x = secondary_structure, fill = residue)) + 
+  geom_bar(position = "dodge") +
+  facet_wrap(~conformation_type, scales = "free_y", nrow = 1) + 
+  scale_fill_viridis_d(name= "", direction = -1, option = "C") +
+theme(strip.text.x = element_text(size = 15)) +
+  theme_bw()
+
+dssp_boxplot
+
+
+
+dssp_boxplot_2 <- ggplot(data = dssp, aes(x = secondary_structure, fill = secondary_structure)) + 
+  geom_bar(position = "dodge") +
+  facet_wrap(~conformation_type + factor(residue, levels = c("dssp_m1","dssp_r0","dssp_p1","dssp_p2")), scales = "free_y")  +
+theme(strip.text.x = element_text(size = 8))  +
+  theme_bw()
+
+dssp_boxplot_2
+
+```
+
+```{r}
+df <- df %>% 
+  mutate(across(c(dssp_m1,dssp_r0,dssp_p1,dssp_p2), ~replace(., . == "", "loop" ))) %>%
+  mutate(across(c(dssp_m1,dssp_r0,dssp_p1,dssp_p2), ~replace(., . == "P", "loop" ))) %>%
+  mutate(across(c(dssp_m1,dssp_r0,dssp_p1,dssp_p2), ~replace(., . == "B", "loop" ))) %>%
+  mutate(across(c(dssp_m1,dssp_r0,dssp_p1,dssp_p2), ~replace(., . == "S", "loop" ))) %>%
+  mutate(across(c(dssp_m1,dssp_r0,dssp_p1,dssp_p2), ~replace(., . == "G", "H" ))) %>%
+  mutate(across(c(dssp_m1,dssp_r0,dssp_p1,dssp_p2), ~replace(., . == "I", "H" ))) 
+  
+```
+
+```{r}
+
+dssp <- df %>%  select(conformation_type, dssp_m1,dssp_r0,dssp_p1,dssp_p2) %>% pivot_longer(!conformation_type, names_to="residue", values_to="secondary_structure")
+
+dssp_boxplot <- ggplot(data = dssp, aes(x = secondary_structure, fill = residue)) + 
+  geom_bar(position = "dodge") +
+  facet_wrap(~conformation_type, scales = "free_y", nrow = 1) + 
+  scale_fill_viridis_d(name= "", direction = -1, option = "C") +
+theme(strip.text.x = element_text(size = 15)) +
+  theme_bw()
+
+dssp_boxplot
+
+
+
+dssp_boxplot_2 <- ggplot(data = dssp, aes(x = secondary_structure, fill = secondary_structure)) + 
+  geom_bar(position = "dodge") +
+  facet_wrap(~conformation_type + factor(residue, levels = c("dssp_m1","dssp_r0","dssp_p1","dssp_p2")), scales = "free_y")  +
+theme(strip.text.x = element_text(size = 8))  +
+  theme_bw()
+
+dssp_boxplot_2
+
+
+```
+
+```{r}
+categorical <- df %>% select(c(dssp_m1,dssp_r0,dssp_p1,dssp_p2))
+
+dummy <- dummyVars(" ~ .", data=categorical) 
+categorical_df <- data.frame(predict(dummy, newdata=categorical))
+
+final_df <- df %>% select(!c(dssp_m1,dssp_r0,dssp_p1,dssp_p2)) %>% cbind(categorical_df) %>% select(conformation_type, cn_m1:dssp_p2T)
+
+final_df <- final_df %>%  mutate(across(donor_1:acceptor_2,~replace_na(.,0))) 
+
+
+
+```
+
+```{r}
+ramachandran <- final_df %>% select(conformation_type,zram_m1:zram_p2)
+hydrogen <- final_df %>% select(conformation_type,donor_1:acceptor_2)
+
+hydrogen_longer <-hydrogen %>%  pivot_longer(names_to="hbond", values_to="value", cols=-conformation_type)
+
+ramachandran_longer <- ramachandran %>%  pivot_longer(names_to="ramachandran", values_to="value", cols=-conformation_type)
+
+distribution_hydrogen <- ggplot(data = hydrogen_longer, mapping = aes(x = value))+
+  geom_histogram(binwidth = 0.25, alpha=0.5, colour ="white", fill = "black") +
+  facet_wrap(~ conformation_type + hbond, scales = "free_y")
+
+distribution_hydrogen
+
+boxplot_hydrogen <- ggplot(data = hydrogen_longer, mapping = aes(x = value))+
+  geom_boxplot() +
+  facet_wrap(~ conformation_type + hbond)
+
+boxplot_hydrogen
+
+distribution_ramachandran <- ggplot(data = ramachandran_longer, mapping = aes(x = value))+
+  geom_histogram(binwidth = 0.125, alpha=0.5, colour ="white", fill = "black") +
+  facet_wrap(~ conformation_type + ramachandran, scales = "free_y")
+
+distribution_ramachandran
+
+boxplot_ramachandran <- ggplot(data = ramachandran_longer, mapping = aes(x = value))+
+  geom_boxplot() +
+  facet_wrap(~ conformation_type + ramachandran)
+
+boxplot_ramachandran
+
+```
+
+
+
+
+```{r}
+numerical_cols <- colnames(final_df)
+
+residue_info<- df %>% select(c(asymID,compID,insCode,seqNum,seqID_besttls))
+
+
+numerical_df <- final_df %>% select(conformation_type,numerical_cols) %>% group_by(conformation_type) %>%  mutate(across(where(is.numeric), ~replace_na(., mean(., na.rm=TRUE)))) %>% 
+ungroup() %>% select(-c(donor_2,acceptor_2))
+
+final_training_set <- numerical_df %>% cbind(residue_info)
+
+
+
+
+
+write.csv(final_training_set, "data/training_data/final_training_set.csv", row.names=FALSE)
+
+num_matrix  <- numerical_df %>% select(!conformation_type)
+data_normalized <- scale(num_matrix)
+cor_matrix <- cor(data_normalized)
+pcor_matrix <- cor_pmat(data_normalized)
+
+#cor_matrix <- numerical_df %>% drop_na() %>% 
+#    nest_by(conformation_type) %>% 
+#    summarise(CorMat = cor(numerical_df))
+  
+```
+
+```{r}
+numerical_df %>% group_by(conformation_type) %>% summarise(across(cn_m1:dssp_p2T ,~sum(is.na(.x)/n()*100)))
+
+```
+
+```{r}
+
+cor_df_grouped <- numerical_df  %>% split(f = .$conformation_type) %>% map(~ .x %>% select(-conformation_type))
+
+cor_df_grouped <- lapply(cor_df_grouped, function(x){scale(x)})
+cor_matrix_list <- lapply(cor_df_grouped, function(x){cor(x)})
+#pcor_matrix_list <- lapply(cor_df_grouped, function(x){cor_pmat(x)})
+
+
+ggcorrplot(cor_matrix_list$n_flip,type = "lower", title = "N_flip",  tl.cex = 7)
+ggcorrplot(cor_matrix_list$o_flip,type = "lower", title = "O_flip",  tl.cex = 7)
+ggcorrplot(cor_matrix_list$pep_flip,type = "lower", title = "Pep_flip",  tl.cex = 7)
+ggcorrplot(cor_matrix_list$random,type = "lower", title = "Random",  tl.cex = 7)
+
+
+```
+```{r}
+
+
+
+ggcorrplot(cor_matrix, hc.order = TRUE, hc.method = "average" ,type = "lower", title = "All_labels",  tl.cex = 7)
+d_cor_matrix <- dist(cor_matrix, method = "euclidean")
+hc_cor <- hclust(d_cor_matrix, method = "average")
+
+plot(hc_cor)
+
+
+
+```
+
+```{r}
+
+
+
+ggcorrplot(cor_matrix_list$random, hc.order = TRUE, hc.method = "average" ,type = "lower", title = "random",  tl.cex = 7)
+d_cor_matrix <- dist(cor_matrix_list$random, method = "euclidean")
+hc_cor <- hclust(d_cor_matrix, method = "average")
+
+plot(hc_cor)
+
+
+
+```
+
+```{r}
+
+my_pca <- prcomp(num_matrix, scale = TRUE,
+                center = TRUE)
+```
+
+```{r}
+eigen_values <- tbl_df(get_eig(my_pca))
+eigen_values$dim <- 1:length(rownames(get_eig(my_pca)))
+
+fviz_eig(my_pca, choice = "variance", ncp = 20)
+
+ggplot(data = eigen_values, aes( x = dim, y = cumulative.variance.percent)) +
+  geom_col(fill = "#4682b4") +
+  geom_line(aes(x =dim, y = cumulative.variance.percent), position = position_dodge(width = 1))+
+  geom_point(aes(x =dim, y = cumulative.variance.percent), position = position_dodge(width = 1))+
+  theme_bw()
+
+fviz_pca_var(my_pca,
+             axes = c(1, 2),
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#00AFBB", "#E7B800"),
+             repel = FALSE    # Avoid text overlapping
+             )
+fviz_pca_ind(my_pca, axes = c(1, 2) ,geom="point", repel = FALSE, label="none", habillage=numerical_df$conformation_type)
+
+
+```
+```{r}
+
+numerical_df <- numerical_df %>% distinct()
+
+labels <-numerical_df$conformation_type
+numerical_df$conformation_type <- as.factor(numerical_df$conformation_type)
+
+colors = rainbow(length(unique(numerical_df$conformation_type)))
+names(colors) = unique(numerical_df$conformation_type)
+
+tsne <- Rtsne(numerical_df[,-1], dims = 2, perplexity=30, verbose=TRUE, max_iter = 500)
+
+
+```
+```{r}
+
+colour_df <- data.frame(x = tsne$Y[,1],
+                 y = tsne$Y[,2],
+                 colour = numerical_df$conformation_type)
+
+
+
+ggplot(df, aes(x, y, colour = colour)) +
+  geom_point(size=0.5)
+
+```
+
+
+
+
+
+
+
+
+
+
+
